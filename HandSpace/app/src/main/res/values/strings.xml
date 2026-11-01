@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HandSpace</string>
+    <string name="camera_permission_denied">Permissão da câmera negada. Conceda o acesso nas configurações do Android para usar o HandSpace.</string>
+    <string name="camera_active_privacy">● Câmera ativa · rastreamento local, nenhuma imagem é enviada</string>
+    <string name="no_front_camera">Este dispositivo não possui câmera frontal disponível.</string>
+    <string name="camera_error">Erro ao iniciar a câmera: %1$s</string>
+    <string name="hands_none">Nenhuma mão no campo de visão</string>
+    <string name="status_tracking">%1$s · %2$.0f FPS · %3$d ms</string>
+    <plurals name="hands_detected">
+        <item quantity="one">%1$d mão detectada</item>
+        <item quantity="other">%1$d mãos detectadas</item>
+    </plurals>
+</resources>
