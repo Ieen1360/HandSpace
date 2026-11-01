@@ -27,7 +27,7 @@ data class Vec3(val x: Float, val y: Float, val z: Float) {
     }
 }
 
-/** Raio com origem e direção. Para intersectSphere, a direção deve ser unitária. */
+/** Raio com origem e direção. A direção não precisa ser unitária: o parâmetro t é o que as interseções devolvem. */
 data class Ray(val origin: Vec3, val direction: Vec3) {
     /** Ponto ao longo do raio a uma distância [t] da origem. */
     fun pointAt(t: Float): Vec3 = origin + direction * t
@@ -74,19 +74,21 @@ object SpatialGeometry {
     }
 
     /**
-     * Distância t > 0 da primeira interseção do raio com a esfera, ou null.
+     * Menor t > 0 da interseção do raio com a esfera, ou null. Vale para qualquer comprimento de direção.
      * Se a origem estiver dentro da esfera, retorna a saída (t positivo).
      */
     fun intersectSphere(ray: Ray, center: Vec3, radius: Float): Float? {
         if (radius <= 0f) return null
+        val a = ray.direction.dot(ray.direction)
+        if (a < EPSILON) return null
         val oc = ray.origin - center
         val b = oc.dot(ray.direction)
         val c = oc.dot(oc) - radius * radius
-        val disc = b * b - c
+        val disc = b * b - a * c
         if (disc < 0f) return null
         val s = sqrt(disc)
-        val near = -b - s
-        val far = -b + s
+        val near = (-b - s) / a
+        val far = (-b + s) / a
         return when {
             near > 0f -> near
             far > 0f -> far

@@ -33,9 +33,12 @@ class Camera3D(
         return ScreenPoint(cx + focalPx * p.x / p.z, cy - focalPx * p.y / p.z)
     }
 
-    /** Raio que sai da câmera e passa pelo pixel (sx, sy). Direção unitária. */
+    /**
+     * Raio que sai da câmera e passa pelo pixel (sx, sy). A direção tem z = 1, então o parâmetro t
+     * do raio é a profundidade: `pointAt(z)` está à profundidade z, na mesma convenção de [unprojectAtDepth].
+     */
     fun unproject(sx: Float, sy: Float): Ray {
-        val dir = Vec3((sx - cx) / focalPx, -(sy - cy) / focalPx, 1f).normalized()
+        val dir = Vec3((sx - cx) / focalPx, -(sy - cy) / focalPx, 1f)
         return Ray(Vec3.ZERO, dir)
     }
 
