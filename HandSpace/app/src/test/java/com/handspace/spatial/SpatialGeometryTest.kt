@@ -107,4 +107,12 @@ class SpatialGeometryTest {
         assertEquals(1f, Vec3(3f, 4f, 0f).normalized().length(), 0.0001f)
         assertEquals(Vec3.ZERO, Vec3.ZERO.normalized())
     }
+
+    @Test
+    fun intersectSphere_isConsistentForAnyDirectionLength() {
+        // Dobrar o comprimento da direção deve reduzir o parâmetro t pela metade, sem mudar o ponto.
+        val unit = SpatialGeometry.intersectSphere(forward, Vec3(0f, 0f, 5f), 1f)!!
+        val doubled = SpatialGeometry.intersectSphere(Ray(Vec3.ZERO, Vec3(0f, 0f, 2f)), Vec3(0f, 0f, 5f), 1f)!!
+        assertEquals(unit, doubled * 2f, 0.0001f)
+    }
 }

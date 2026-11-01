@@ -45,4 +45,12 @@ class Camera3DTest {
         // 60° verticais em 1000 px: f = 500 / tan(30°) ≈ 866.03
         assertEquals(866.03f, camera.focalPx, 0.05f)
     }
+
+    @Test
+    fun unproject_parameterIsDepth() {
+        // Contrato: o raio tem z = 1, então pointAt(z) devolve o ponto à profundidade z.
+        val ray = camera.unproject(123f, 456f)
+        assertEquals(1f, ray.direction.z, 0.0001f)
+        assertEquals(2.5f, ray.pointAt(2.5f).z, 0.0001f)
+    }
 }
