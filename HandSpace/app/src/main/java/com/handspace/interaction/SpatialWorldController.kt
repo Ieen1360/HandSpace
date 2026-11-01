@@ -64,12 +64,14 @@ class SpatialWorldController(
 
     private val skeleton = HandSkeleton3D()
     private val slots = HashMap<Handedness, Slot>()
+
+    /** Cooldown por botão: impede repetir o mesmo botão em rajada, sem bloquear outros elementos. */
+    private val buttonCooldowns = HashMap<String, ActivationCooldown>()
     private val handList = ArrayList<HandPose3D>()
     private val scaleStates = HashMap<String, ScaleState>()
 
     private inner class Slot(val hand: Handedness) {
         val recognizer = GestureRecognizer(stableFrames = stableFrames)
-        val cooldown = ActivationCooldown(cooldownMs)
         var gesture: HandGesture = HandGesture.NONE
         var ray: Ray? = null
         var wristZ: Float = 0f
@@ -158,14 +160,14 @@ class SpatialWorldController(
         val hit = world.pick(ray) ?: return
         val obj = hit.obj
 
-        // Botão só dispara uma vez por pinça, respeitando o cooldown.
+        // Botão dispara uma vez por pinça, e o mesmo botão não repete antes do cooldown.
         if (obj.kind == WorldKind.BUTTON) {
-            if (!slot.cooldown.tryFire(nowMs)) return
+            val cooldown = buttonCooldowns.getOrPut(obj.id) { ActivationCooldown(cooldownMs) }
+            if (!cooldown.tryFire(nowMs)) return
             obj.pressedAtMs = nowMs
             obj.action?.let { performAction(it) }
             return
         }
-        if (!slot.cooldown.tryFire(nowMs)) return
 
         slot.grab = obj
         slot.tGrab = hit.distance
