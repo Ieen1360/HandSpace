@@ -186,4 +186,40 @@ class SpatialWorldControllerTest {
         assertNull(world.get("ball")!!.heldBy)
         assertTrue(c.hands.isEmpty())
     }
+
+    @Test
+    fun grabbingSphere_doesNotBlockImmediateButtonPress() {
+        // Regressão: o cooldown de ativação não pode ser consumido por agarrar um objeto.
+        val world = DemoWorld.create()
+        var cameraActions = 0
+        val c = SpatialWorldController(world, onCameraAction = { cameraActions++ }, stableFrames = 1)
+        c.interactive = true
+        val sphere = world.get(DemoWorld.SPHERE_ID)!!
+        val (sx, sy) = screenOf(sphere.center)
+        val (cx, cy) = screenOf(world.get("menu_camera")!!.center)
+
+        c.onFrame(frame(0, pinchAt(Handedness.RIGHT, sx, sy)), transform, camera, 0)
+        c.onFrame(frame(33, openAt(Handedness.RIGHT, sx, sy)), transform, camera, 33)
+        c.onFrame(frame(100, pinchAt(Handedness.RIGHT, cx, cy)), transform, camera, 100)
+
+        assertEquals(1, cameraActions)
+    }
+
+    @Test
+    fun sameButtonRepeatedWithinCooldown_firesOnce_thenAgainAfterCooldown() {
+        val world = DemoWorld.create()
+        var cameraActions = 0
+        val c = SpatialWorldController(world, onCameraAction = { cameraActions++ }, stableFrames = 1)
+        c.interactive = true
+        val (cx, cy) = screenOf(world.get("menu_camera")!!.center)
+
+        c.onFrame(frame(0, pinchAt(Handedness.RIGHT, cx, cy)), transform, camera, 0)
+        c.onFrame(frame(100, openAt(Handedness.RIGHT, cx, cy)), transform, camera, 100)
+        c.onFrame(frame(200, pinchAt(Handedness.RIGHT, cx, cy)), transform, camera, 200)
+        assertEquals("dentro do cooldown, o mesmo botão não repete", 1, cameraActions)
+
+        c.onFrame(frame(300, openAt(Handedness.RIGHT, cx, cy)), transform, camera, 300)
+        c.onFrame(frame(500, pinchAt(Handedness.RIGHT, cx, cy)), transform, camera, 500)
+        assertEquals("após o cooldown, o botão volta a disparar", 2, cameraActions)
+    }
 }
