@@ -22,13 +22,18 @@ import com.handspace.tracking.ViewTransform
 /**
  * Gestos → ações no mundo virtual 3D.
  *
- * - O raio de cada mão sai da câmera e passa pela ponta do indicador. Desenho e seleção usam a mesma projeção.
- * - PINCH na borda de subida: aciona um botão (uma vez) ou agarra um painel/esfera.
- * - Agarrar: a mão principal move o objeto ao longo do próprio raio. Afastar ou aproximar a mão no eixo
- *   de profundidade puxa ou empurra o objeto (PULL_GAIN_M por unidade de z do landmark do punho).
- * - Duas mãos agarrando o mesmo objeto: a escala acompanha a distância entre as pontas dos indicadores.
- * - OPEN_HAND na borda de subida solta. FIST e NONE não têm ação. Mão que sai da visão solta tudo.
- * - Objetos só são agarrados e acionados quando [interactive] é true (câmera traseira).
+ * Regras:
+ * - O raio de cada mão sai da câmera e passa pela ponta do indicador.
+ * - PINCH na borda de subida: se o alvo é um botão, aciona a ação (uma vez, com cooldown próprio do botão).
+ *   Se o alvo é um painel ou esfera, agarra. Agarrar não usa cooldown.
+ * - A mão principal (quem agarrou primeiro) move o objeto ao longo do próprio raio. Afastar ou aproximar
+ *   a mão no eixo de profundidade puxa ou empurra o objeto.
+ * - Uma segunda mão pode se juntar ao mesmo objeto só para escalar: a escala acompanha a distância entre
+ *   as pontas dos indicadores.
+ * - OPEN_HAND na borda de subida solta o objeto da mão. FIST e NONE não têm ação.
+ * - Mão que sai do campo de visão solta o que segurava.
+ * - Agarrar e acionar só acontecem com [interactive] true (câmera traseira). Enquanto false, as mãos são
+ *   apenas desenhadas.
  *
  * Deve ser usado na thread principal.
  */
@@ -49,188 +54,211 @@ class SpatialWorldController(
         val hoverId: String?,
     )
 
-    /** Quando false (câmera frontal), as mãos são desenhadas mas não agarram nem acionam objetos. */
+    /** Quando false, nenhum objeto é agarrado nem acionado. */
     var interactive: Boolean = false
 
-    /** Alternado pelo botão "Config." do menu. Controla só a visualização do esqueleto. */
+    /** Alternado pelo botão "Config.". Controla só a visualização do esqueleto. */
     var showSkeleton: Boolean = true
         private set
 
-    /** Arrastes concluídos pela mão principal. */
+    /** Quantas vezes um objeto foi solto pela mão que o segurava como principal. */
     var dragCount: Int = 0
         private set
 
     val hands: List<HandPose3D> get() = handList
 
     private val skeleton = HandSkeleton3D()
-    private val slots = HashMap<Handedness, Slot>()
-
-    /** Cooldown por botão: impede repetir o mesmo botão em rajada, sem bloquear outros elementos. */
-    private val buttonCooldowns = HashMap<String, ActivationCooldown>()
+    private val handStates = HashMap<Handedness, HandState>()
     private val handList = ArrayList<HandPose3D>()
+
+    /** Cooldown por botão, para que o mesmo botão não dispare em rajada. */
+    private val buttonCooldowns = HashMap<String, ActivationCooldown>()
+
     private val scaleStates = HashMap<String, ScaleState>()
 
-    private inner class Slot(val hand: Handedness) {
+    private inner class HandState(val hand: Handedness) {
         val recognizer = GestureRecognizer(stableFrames = stableFrames)
         var gesture: HandGesture = HandGesture.NONE
         var ray: Ray? = null
         var wristZ: Float = 0f
-        var wristZGrab: Float = 0f
-        var grab: WorldObject? = null
-        var tGrab: Float = 0f
-        var tCur: Float = 0f
-        var offset: Vec3 = Vec3.ZERO
-        var seen: Boolean = false
 
-        /** Ponta do indicador no mundo, no raio atual, à distância do objeto agarrado. */
-        fun worldTip(): Vec3? = ray?.pointAt(tCur)
+        /** Objeto que esta mão está segurando, ou null. */
+        var grab: WorldObject? = null
+
+        /** Parâmetro t do raio na distância atual do objeto agarrado. */
+        var distance: Float = 0f
+
+        /** Distância do agarre inicial e profundidade do punho no momento do agarre. */
+        var grabDistance: Float = 0f
+        var wristZAtGrab: Float = 0f
+
+        /** Vetor do centro do objeto até o ponto do raio no agarre; mantém o objeto no mesmo lugar relativo à mão. */
+        var offset: Vec3 = Vec3.ZERO
+
+        var seen: Boolean = false
     }
 
     private class ScaleState(val baseScale: Float, val baseSpread: Float)
 
     fun onFrame(frame: HandFrame, transform: ViewTransform, camera: Camera3D, nowMs: Long) {
         handList.clear()
-        for (s in slots.values) s.seen = false
+        for (state in handStates.values) state.seen = false
 
         if (frame.imageWidth > 0 && frame.imageHeight > 0) {
             for (hand in frame.hands) {
                 if (hand.landmarks.size < HandLandmarkIndex.LANDMARK_COUNT) continue
-                val slot = slots.getOrPut(hand.handedness) { Slot(hand.handedness) }
-                if (slot.seen) continue
-                slot.seen = true
-                processHand(hand, slot, frame, transform, camera, nowMs)
+                val state = handStates.getOrPut(hand.handedness) { HandState(hand.handedness) }
+                if (state.seen) continue
+                state.seen = true
+                processHand(hand, state, frame, transform, camera, nowMs)
             }
         }
 
-        for (s in slots.values) {
-            if (!s.seen) lose(s)
+        for (state in handStates.values) {
+            if (!state.seen) lose(state)
         }
         updateTwoHandScale()
     }
 
     /** Solta tudo e limpa o estado. Chamar ao parar a câmera. */
     fun reset() {
-        for (s in slots.values) lose(s)
+        for (state in handStates.values) lose(state)
         handList.clear()
         scaleStates.clear()
     }
 
-    /** Liga ou desliga a visualização do esqueleto (botão Config.). */
+    /** Liga ou desliga o esqueleto (botão Config.). */
     fun toggleSkeleton() {
         showSkeleton = !showSkeleton
     }
 
     private fun processHand(
         hand: TrackedHand,
-        slot: Slot,
+        state: HandState,
         frame: HandFrame,
         transform: ViewTransform,
         camera: Camera3D,
         nowMs: Long,
     ) {
         val lms = hand.landmarks
-        val gesture = slot.recognizer.update(lms, frame.imageWidth, frame.imageHeight)
-        val tipScreen = transform.map(lms[HandLandmarkIndex.INDEX_TIP])
-        val ray = camera.unproject(tipScreen.x, tipScreen.y)
-        slot.ray = ray
-        slot.wristZ = lms[HandLandmarkIndex.WRIST].z
+        val gesture = state.recognizer.update(lms, frame.imageWidth, frame.imageHeight)
+        val tip = transform.map(lms[HandLandmarkIndex.INDEX_TIP])
+        val ray = camera.unproject(tip.x, tip.y)
+        state.ray = ray
+        state.wristZ = lms[HandLandmarkIndex.WRIST].z
 
-        val previous = slot.gesture
-        slot.gesture = gesture
+        val previous = state.gesture
+        state.gesture = gesture
 
         if (interactive) {
             if (gesture == HandGesture.PINCH && previous != HandGesture.PINCH) {
-                onPinchStart(slot, ray, nowMs)
+                onPinch(state, ray, nowMs)
             }
             if (gesture == HandGesture.OPEN_HAND && previous != HandGesture.OPEN_HAND) {
-                release(slot)
+                release(state)
             }
-            val grabbed = slot.grab
-            if (grabbed != null && grabbed.heldBy == slot.hand) follow(slot, grabbed, ray)
+            val grabbed = state.grab
+            if (grabbed != null && grabbed.heldBy == state.hand) {
+                moveGrabbed(state, grabbed, ray)
+            }
         }
 
-        val holding = slot.grab?.id
-        val hover = if (interactive && holding == null) world.pick(ray)?.obj?.id else holding
-        val joints = skeleton.joints(hand, transform, camera)
-        handList.add(HandPose3D(hand.handedness, joints, gesture, tipScreen, holding, hover))
+        val holdingId = state.grab?.id
+        val hoverId = if (interactive && holdingId == null) world.pick(ray)?.obj?.id else holdingId
+        handList.add(
+            HandPose3D(
+                hand = hand.handedness,
+                joints = skeleton.joints(hand, transform, camera),
+                gesture = gesture,
+                tipScreen = tip,
+                holdingId = holdingId,
+                hoverId = hoverId,
+            )
+        )
     }
 
-    private fun onPinchStart(slot: Slot, ray: Ray, nowMs: Long) {
-        if (slot.grab != null) return
+    /** Pinça recém-iniciada: aciona um botão ou agarra um objeto. */
+    private fun onPinch(state: HandState, ray: Ray, nowMs: Long) {
+        if (state.grab != null) return
         val hit = world.pick(ray) ?: return
         val obj = hit.obj
 
-        // Botão dispara uma vez por pinça, e o mesmo botão não repete antes do cooldown.
         if (obj.kind == WorldKind.BUTTON) {
-            val cooldown = buttonCooldowns.getOrPut(obj.id) { ActivationCooldown(cooldownMs) }
-            if (!cooldown.tryFire(nowMs)) return
-            obj.pressedAtMs = nowMs
-            obj.action?.let { performAction(it) }
+            pressButton(obj, nowMs)
             return
         }
 
-        slot.grab = obj
-        slot.tGrab = hit.distance
-        slot.tCur = hit.distance
-        slot.offset = obj.center - ray.pointAt(hit.distance)
-        slot.wristZGrab = slot.wristZ
-        // A primeira mão vira principal. Uma segunda mão pode se juntar só para escalar.
-        if (obj.heldBy == null) obj.heldBy = slot.hand
+        state.grab = obj
+        state.grabDistance = hit.distance
+        state.distance = hit.distance
+        state.wristZAtGrab = state.wristZ
+        state.offset = obj.center - ray.pointAt(hit.distance)
+        if (obj.heldBy == null) obj.heldBy = state.hand
     }
 
-    private fun follow(slot: Slot, obj: WorldObject, ray: Ray) {
-        slot.tCur = (slot.tGrab + (slot.wristZ - slot.wristZGrab) * PULL_GAIN_M)
+    private fun pressButton(button: WorldObject, nowMs: Long) {
+        val cooldown = buttonCooldowns.getOrPut(button.id) { ActivationCooldown(cooldownMs) }
+        if (!cooldown.tryFire(nowMs)) return
+        button.pressedAtMs = nowMs
+        button.action?.let { performAction(it) }
+    }
+
+    /** A mão move o objeto ao longo do próprio raio; o eixo de profundidade do punho controla a distância. */
+    private fun moveGrabbed(state: HandState, obj: WorldObject, ray: Ray) {
+        state.distance = (state.grabDistance + (state.wristZ - state.wristZAtGrab) * PULL_GAIN_M)
             .coerceIn(MIN_DISTANCE_M, MAX_DISTANCE_M)
-        val target = ray.pointAt(slot.tCur) + slot.offset
+        val target = ray.pointAt(state.distance) + state.offset
         obj.center = Vec3(target.x, target.y, target.z.coerceAtLeast(MIN_OBJECT_Z_M))
     }
 
-    private fun release(slot: Slot) {
-        val obj = slot.grab ?: return
-        slot.grab = null
-        if (obj.heldBy == slot.hand) {
+    private fun release(state: HandState) {
+        val obj = state.grab ?: return
+        state.grab = null
+        if (obj.heldBy == state.hand) {
             // Se outra mão ainda segura o objeto, ela passa a ser a principal.
-            obj.heldBy = slots.values.firstOrNull { it.grab === obj }?.hand
+            obj.heldBy = handStates.values.firstOrNull { it.grab === obj }?.hand
             dragCount++
         }
     }
 
-    private fun lose(slot: Slot) {
-        release(slot)
-        slot.recognizer.reset()
-        slot.gesture = HandGesture.NONE
-        slot.ray = null
+    private fun lose(state: HandState) {
+        release(state)
+        state.recognizer.reset()
+        state.gesture = HandGesture.NONE
+        state.ray = null
     }
 
     /** Solta todas as mãos que seguram [obj]. Usado quando o objeto fica oculto. */
     private fun releaseObject(obj: WorldObject) {
-        for (s in slots.values) {
-            if (s.grab === obj) release(s)
+        for (state in handStates.values) {
+            if (state.grab === obj) release(state)
         }
     }
 
+    /** Duas mãos no mesmo objeto: a escala segue a distância entre as pontas dos indicadores. */
     private fun updateTwoHandScale() {
-        val active = slots.values.filter { it.grab != null && it.ray != null }
+        val held = handStates.values.filter { it.grab != null && it.ray != null }
         val touched = HashSet<String>()
-        for (i in active.indices) {
-            for (j in i + 1 until active.size) {
-                val a = active[i]
-                val b = active[j]
-                val objA = a.grab ?: continue
-                val objB = b.grab ?: continue
-                if (objA !== objB) continue
-                val ta = a.worldTip() ?: continue
-                val tb = b.worldTip() ?: continue
-                val spread = (ta - tb).length()
-                val state = scaleStates.getOrPut(objA.id) { ScaleState(objA.scale, spread) }
-                objA.scale = SpatialGeometry.scaleFromSpread(
+        for (i in held.indices) {
+            for (j in i + 1 until held.size) {
+                val a = held[i]
+                val b = held[j]
+                val obj = a.grab ?: continue
+                if (b.grab !== obj) continue
+                val tipA = tipWorld(a) ?: continue
+                val tipB = tipWorld(b) ?: continue
+                val spread = (tipA - tipB).length()
+                val state = scaleStates.getOrPut(obj.id) { ScaleState(obj.scale, spread) }
+                obj.scale = SpatialGeometry.scaleFromSpread(
                     state.baseScale, state.baseSpread, spread, MIN_SCALE, MAX_SCALE,
                 )
-                touched.add(objA.id)
+                touched.add(obj.id)
             }
         }
         scaleStates.keys.retainAll(touched)
     }
+
+    private fun tipWorld(state: HandState): Vec3? = state.ray?.pointAt(state.distance)
 
     private fun performAction(action: MenuAction) {
         when (action) {
