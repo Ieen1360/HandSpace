@@ -36,4 +36,21 @@
     <string name="sensor_accel_unavailable">Acelerômetro: indisponível neste aparelho</string>
     <string name="sensor_accel_waiting">Acelerômetro: aguardando leitura</string>
     <string name="sensor_accel_values">Acel. (m/s²): %1$.2f  %2$.2f  %3$.2f</string>
+
+    <string name="camera_front_label">Frontal · rastreamento e bola 2D</string>
+    <string name="camera_rear_label">Traseira · AR sem âncoras espaciais</string>
+    <string name="camera_switch">Trocar câmera</string>
+    <string name="camera_opening">Abrindo câmera…</string>
+    <string name="camera_start_failed">Falha ao abrir a câmera: %1$s</string>
+    <string name="info_camera_front">Câmera: frontal</string>
+    <string name="info_camera_rear">Câmera: traseira (AR)</string>
+    <string name="info_anchors">Âncoras: indisponíveis (sem ARCore)</string>
+
+    <array name="menu_labels">
+        <item>Início</item>
+        <item>Objetos</item>
+        <item>Config.</item>
+        <item>Rastreio</item>
+        <item>Câmera</item>
+    </array>
 </resources>
