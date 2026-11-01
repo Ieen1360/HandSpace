@@ -23,35 +23,55 @@ import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
 /**
- * Câmera frontal com preview e análise de frames.
+ * Câmera ativa (frontal ou traseira) com preview e análise de frames para o MediaPipe.
  *
- * Cada frame de análise é convertido para Bitmap já vertical e espelhado, igual ao preview
- * de selfie. Assim, as coordenadas dos landmarks coincidem com o que o usuário vê.
+ * Só uma câmera fica aberta por vez: a troca é feita por [stop] seguido de [start].
+ * A imagem analisada é espelhada apenas na câmera frontal, para coincidir com o preview de selfie.
+ * Na câmera traseira o rastreamento continua ativo; apenas a orientação não é espelhada.
  */
 class FrontCameraController(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
     private val onFrame: (bitmap: Bitmap, captureTimestampMs: Long) -> Unit,
     private val onError: (message: String) -> Unit,
+    private val onStarted: (mode: CameraMode) -> Unit,
 ) {
 
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var provider: ProcessCameraProvider? = null
 
-    fun start(previewView: PreviewView) {
+    /** Incrementado a cada start/stop, para descartar aberturas que já foram superadas. */
+    private var generation = 0
+
+    @Volatile
+    private var mirror = true
+
+    fun start(previewView: PreviewView, mode: CameraMode) {
+        val myGeneration = ++generation
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
+            if (myGeneration != generation) return@addListener
             try {
-                bind(future.get(), previewView)
+                bind(future.get(), previewView, mode, myGeneration)
             } catch (e: Exception) {
                 onError(e.message ?: "falha desconhecida")
             }
         }, ContextCompat.getMainExecutor(context))
     }
 
-    private fun bind(cameraProvider: ProcessCameraProvider, previewView: PreviewView) {
-        if (!cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)) {
-            onError(NO_FRONT_CAMERA_MESSAGE)
+    private fun bind(
+        cameraProvider: ProcessCameraProvider,
+        previewView: PreviewView,
+        mode: CameraMode,
+        gen: Int,
+    ) {
+        val selector = if (mode == CameraMode.REAR_AR) {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        } else {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        }
+        if (!cameraProvider.hasCamera(selector)) {
+            onError(if (mode == CameraMode.REAR_AR) NO_REAR_CAMERA_MESSAGE else NO_FRONT_CAMERA_MESSAGE)
             return
         }
 
@@ -74,22 +94,23 @@ class FrontCameraController(
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
             .build()
 
+        mirror = mode == CameraMode.FRONT_TRACKING
         analysis.setAnalyzer(analysisExecutor) { proxy -> analyze(proxy) }
 
         cameraProvider.unbindAll()
-        cameraProvider.bindToLifecycle(
-            lifecycleOwner,
-            CameraSelector.DEFAULT_FRONT_CAMERA,
-            preview,
-            analysis,
-        )
+        cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+        if (gen != generation) {
+            cameraProvider.unbindAll()
+            return
+        }
         provider = cameraProvider
+        onStarted(mode)
     }
 
     private fun analyze(proxy: ImageProxy) {
         try {
             val raw = proxy.toBitmap()
-            val oriented = orientForSelfieView(raw, proxy.imageInfo.rotationDegrees)
+            val oriented = orient(raw, proxy.imageInfo.rotationDegrees, mirror)
             onFrame(oriented, SystemClock.uptimeMillis())
         } catch (e: Exception) {
             Log.w(TAG, "Falha ao converter frame", e)
@@ -98,11 +119,11 @@ class FrontCameraController(
         }
     }
 
-    /** Gira para vertical e espelha horizontalmente. Retorna um Bitmap novo, sem offsets negativos. */
-    private fun orientForSelfieView(source: Bitmap, rotationDegrees: Int): Bitmap {
+    /** Gira para vertical e, se [mirrorHorizontal], espelha. Retorna um Bitmap novo, sem offsets negativos. */
+    private fun orient(source: Bitmap, rotationDegrees: Int, mirrorHorizontal: Boolean): Bitmap {
         val matrix = Matrix().apply {
             postRotate(rotationDegrees.toFloat())
-            postScale(-1f, 1f)
+            if (mirrorHorizontal) postScale(-1f, 1f)
         }
         val bounds = RectF(0f, 0f, source.width.toFloat(), source.height.toFloat())
         matrix.mapRect(bounds)
@@ -117,8 +138,9 @@ class FrontCameraController(
         return output
     }
 
-    /** Desvincula a câmera. Pode ser chamado em onStop; start() religa. */
+    /** Desvincula a câmera. Invalida aberturas pendentes. */
     fun stop() {
+        generation++
         provider?.unbindAll()
         provider = null
     }
@@ -131,6 +153,7 @@ class FrontCameraController(
     private companion object {
         const val TAG = "FrontCameraController"
         const val NO_FRONT_CAMERA_MESSAGE = "Este dispositivo não possui câmera frontal disponível."
+        const val NO_REAR_CAMERA_MESSAGE = "Este dispositivo não possui câmera traseira disponível."
         val ANALYSIS_SIZE = Size(640, 480)
     }
 }
