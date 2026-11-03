@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HandSpace</string>
+    <string name="camera_permission_denied">Permissão da câmera negada. Conceda o acesso nas configurações do Android para usar o HandSpace.</string>
+    <string name="camera_active_privacy">● Câmera ativa · rastreamento local, nenhuma imagem é enviada</string>
+    <string name="no_front_camera">Este dispositivo não possui câmera frontal disponível.</string>
+    <string name="camera_error">Erro ao iniciar a câmera: %1$s</string>
+    <string name="hands_none">Nenhuma mão no campo de visão</string>
+    <string name="status_tracking">%1$s · %2$.0f FPS · %3$d ms</string>
+    <plurals name="hands_detected">
+        <item quantity="one">%1$d mão detectada</item>
+        <item quantity="other">%1$d mãos detectadas</item>
+    </plurals>
+
+    <!-- Ordem igual à de HandGesture: NONE, PINCH, OPEN_HAND, FIST, POINTING -->
+    <array name="gesture_names">
+        <item>Nenhum</item>
+        <item>Pinça</item>
+        <item>Mão aberta</item>
+        <item>Punho fechado</item>
+        <item>Apontando</item>
+    </array>
+    <string name="gesture_current">Gesto: %1$s</string>
+
+    <string name="button_reset">Reorganizar</string>
+    <string name="button_color">Mudar cor</string>
+    <string name="info_title">Painel de informações</string>
+    <string name="info_gesture">Gesto: %1$s</string>
+    <string name="info_hands">Mãos: %1$d</string>
+    <string name="info_drags">Arrastes concluídos: %1$d</string>
+    <string name="info_color">Cor do objeto: %1$d</string>
+
+    <string name="sensor_gyro_unavailable">Giroscópio: indisponível neste aparelho</string>
+    <string name="sensor_gyro_waiting">Giroscópio: aguardando leitura</string>
+    <string name="sensor_gyro_values">Giro (rad/s): %1$.2f  %2$.2f  %3$.2f</string>
+    <string name="sensor_accel_unavailable">Acelerômetro: indisponível neste aparelho</string>
+    <string name="sensor_accel_waiting">Acelerômetro: aguardando leitura</string>
+    <string name="sensor_accel_values">Acel. (m/s²): %1$.2f  %2$.2f  %3$.2f</string>
+
+    <string name="camera_front_label">Frontal · rastreamento e bola 2D</string>
+    <string name="camera_rear_label">Traseira · AR sem âncoras espaciais</string>
+    <string name="camera_switch">Trocar câmera</string>
+    <string name="camera_opening">Abrindo câmera…</string>
+    <string name="camera_start_failed">Falha ao abrir a câmera: %1$s</string>
+    <string name="info_camera_front">Câmera: frontal</string>
+    <string name="info_camera_rear">Câmera: traseira (AR)</string>
+    <string name="info_anchors">Âncoras: indisponíveis (sem ARCore)</string>
+
+    <array name="menu_labels">
+        <item>Início</item>
+        <item>Objetos</item>
+        <item>Config.</item>
+        <item>Rastreio</item>
+        <item>Câmera</item>
+    </array>
+</resources>
