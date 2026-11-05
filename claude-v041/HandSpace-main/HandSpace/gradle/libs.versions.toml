@@ -8,6 +8,7 @@ lifecycle = "2.8.7"
 camerax = "1.4.1"
 mediapipe = "0.10.14"
 junit = "4.13.2"
+arcore = "1.57.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -19,6 +20,7 @@ androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", 
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipe" }
+google-ar-core = { group = "com.google.ar", name = "core", version.ref = "arcore" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

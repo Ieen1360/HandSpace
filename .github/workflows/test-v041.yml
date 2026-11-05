@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - test-v041-sdk
+      - ar-dev
 
 permissions:
   contents: read
