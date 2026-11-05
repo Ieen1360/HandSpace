@@ -17,7 +17,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: claude-v041/HandSpace-main/HandSpace
+        working-directory: HandSpace
 
     steps:
       - name: Checkout
@@ -55,6 +55,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: HandSpace-v0.4.1-debug
-          path: claude-v041/HandSpace-main/HandSpace/app/build/outputs/apk/debug/*.apk
+          path: HandSpace/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14

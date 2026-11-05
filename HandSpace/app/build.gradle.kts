@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.androidx.camera.view)
 
     implementation(libs.mediapipe.tasks.vision)
+    implementation(libs.google.ar.core)
 
     testImplementation(libs.junit)
 }
